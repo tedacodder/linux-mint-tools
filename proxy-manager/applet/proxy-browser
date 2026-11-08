@@ -1,0 +1,17 @@
+#!/bin/bash
+# Browser wrapper installed by Proxy Manager. Reads the live gateway at launch
+# time, so launchers and the application menu always use the current gateway.
+# The browser binary is taken from this script's own name (proxy-<binary>).
+STATE_FILE="$HOME/.config/proxy-manager/state/gateway"
+SELF="$(basename "$0")"
+BIN="${SELF#proxy-}"
+if [[ -z $BIN || $BIN == "$SELF" ]] || ! command -v "$BIN" >/dev/null 2>&1; then
+    BIN="chromium"
+fi
+
+GW=""
+[[ -f $STATE_FILE ]] && GW="$(head -1 "$STATE_FILE" | tr -d '[:space:]')"
+if [[ $GW =~ ^https?:// ]]; then
+    exec "$BIN" --proxy-server="$GW" "$@"
+fi
+exec "$BIN" "$@"

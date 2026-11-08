@@ -1,0 +1,7 @@
+{
+    "uuid": "proxy-manager@tedacodder-linux",
+    "name": "Proxy Manager",
+    "description": "Route system, shell, git, npm, yarn, pip, curl, VS Code, browsers and apt through a local HTTP proxy",
+    "max-instances": 1,
+    "cinnamon-version": ["5.8", "6.0", "6.2"]
+}

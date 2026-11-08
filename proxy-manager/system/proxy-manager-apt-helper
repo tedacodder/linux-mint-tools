@@ -1,0 +1,24 @@
+#!/bin/bash
+# Root helper for Proxy Manager. Only reachable through pkexec, authorized by
+# org.tedacodder.proxymanager.apt.policy. Writes or removes the apt proxy config.
+set -eu
+CONF=/etc/apt/apt.conf.d/95proxy-manager
+URL_RE='^https?://[A-Za-z0-9._:/@%-]+$'
+
+case "${1:-}" in
+    set)
+        url="${2:-}"
+        [[ $url =~ $URL_RE ]] || { echo "invalid proxy URL" >&2; exit 1; }
+        tmp="$(mktemp)"
+        printf 'Acquire::http::Proxy "%s";\nAcquire::https::Proxy "%s";\n' "$url" "$url" > "$tmp"
+        install -m 644 "$tmp" "$CONF"
+        rm -f "$tmp"
+        ;;
+    remove)
+        rm -f "$CONF"
+        ;;
+    *)
+        echo "usage: $0 set <url> | remove" >&2
+        exit 2
+        ;;
+esac
