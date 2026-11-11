@@ -601,7 +601,8 @@ class TodoListApplet extends Applet.TextIconApplet {
         try {
             const dir = GLib.build_filenamev([GLib.get_user_state_dir(), 'todo-list']);
             GLib.mkdir_with_parents(dir, 0o755);
-            const file = Gio.File.new_for_path(dir + '/toggle');
+            this._triggerPath = dir + '/toggle';
+            const file = Gio.File.new_for_path(this._triggerPath);
             if (!file.query_exists(null)) {
                 file.replace_contents(ByteArray.fromString(''), null, false, Gio.FileCreateFlags.NONE, null);
             }
@@ -617,12 +618,28 @@ class TodoListApplet extends Applet.TextIconApplet {
                 const now = Date.now();
                 if (now - this._lastToggle < TOGGLE_DEBOUNCE_MS) return;
                 this._lastToggle = now;
-                this._log('toggled from keyboard shortcut');
-                this.on_applet_clicked();
+                this._log('shortcut trigger');
+                this._runTrigger(readText(this._triggerPath));
             });
         } catch (e) {
             this._triggerMonitor = null;
             this._log('keyboard shortcut is off; could not watch the toggle file: ' + e);
+        }
+    }
+
+    // What the trigger file asks for. A timestamp, or an empty file, toggles the
+    // window, which is what the shortcut command writes. Commands are words:
+    // "open", "close", and "theme NAME". For example "theme paper open".
+    _runTrigger(text) {
+        const words = trim(text).split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 0 || /^[0-9]+$/.test(words[0])) {
+            this.on_applet_clicked();
+            return;
+        }
+        for (let i = 0; i < words.length; i++) {
+            if (words[i] === 'open') this._openDialog();
+            else if (words[i] === 'close') this._closeDialog();
+            else if (words[i] === 'theme' && i + 1 < words.length) this.setTheme(words[++i]);
         }
     }
 
@@ -665,7 +682,15 @@ class TodoListApplet extends Applet.TextIconApplet {
 
     cycleTheme() {
         const i = THEME_ORDER.indexOf(this.ui.theme);
-        this.ui.theme = THEME_ORDER[(i + 1) % THEME_ORDER.length];
+        return this.setTheme(THEME_ORDER[(i + 1) % THEME_ORDER.length]);
+    }
+
+    setTheme(name) {
+        if (!has(THEMES, name)) {
+            this._log('unknown theme: ' + name);
+            return this.ui.theme;
+        }
+        this.ui.theme = name;
         this._applyTheme();
         saveTheme(this.ui.theme);
         this._log('theme: ' + this.ui.theme);

@@ -31,6 +31,7 @@ for t in "$TESTS_DIR"/*.test.js; do
 done
 run_one "install.test.sh" bash "$TESTS_DIR/install.test.sh"
 run_one "shortcut.test.sh" bash "$TESTS_DIR/shortcut.test.sh"
+run_one "screenshot.test.sh" bash "$TESTS_DIR/screenshot.test.sh"
 
 echo
 if [ "$status" -eq 0 ]; then

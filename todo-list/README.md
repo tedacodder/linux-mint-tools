@@ -4,6 +4,8 @@ A short, prioritized todo list in your Cinnamon panel. The panel icon shows how
 many tasks are ongoing, coloured by the most urgent one. Open the list with a
 click or with **Ctrl+Alt+D**. Everything works from the keyboard.
 
+![The Todo List window in Neon](docs/window-neon.png)
+
 A port of [check_ur_todo](https://github.com/Aston-lewis/check_ur_todo), which is
 based on [omarchy-priority-todos](https://github.com/dejan994/omarchy-priority-todos)
 by Dejan V. Both are MIT licensed.
@@ -29,6 +31,29 @@ choose **Applets**, and add **Todo List**. Press **Ctrl+Alt+D** to open it.
 > ```bash
 > bash scripts/set-shortcut.sh --remove
 > ```
+
+## Status
+
+Tested on Linux Mint 22 with Cinnamon 6.6 on X11.
+
+Confirmed in a real session:
+
+- The panel icon loads, and the window opens and closes from it.
+- Typing works in the add and search fields.
+- A click outside the window closes it.
+- The Theme button shows the current theme and cycles through them.
+
+Checked only with the automated tests, not yet in a real session:
+
+- Ctrl+Alt+D, the built-in shortcut, and the shortcut text in the bottom bar.
+- Row hover highlights and row buttons.
+- Keyboard-only use: Tab order, Up and Down, and the row keys `c`, `p`, `e`, `x`.
+- The critical icon colour.
+- The daily reset across a real day change.
+- The Omarchy file import, which needs an Omarchy file to test against.
+
+If you find a problem, please open an issue with the output of
+`grep "todo-list" ~/.xsession-errors | tail -20`.
 
 ## Keyboard shortcut
 
@@ -127,6 +152,19 @@ Delete with `x`, or the **Delete** button.
 Click **Theme** in the header, or press `t`, to move through the themes. Your
 choice is saved.
 
+<details>
+<summary>See all six themes</summary>
+
+| Neon | Omarchy |
+| --- | --- |
+| ![Neon](docs/window-neon.png) | ![Omarchy](docs/window-omarchy.png) |
+| Ember | Paper |
+| ![Ember](docs/window-ember.png) | ![Paper](docs/window-paper.png) |
+| Sakura | Lagoon |
+| ![Sakura](docs/window-sakura.png) | ![Lagoon](docs/window-lagoon.png) |
+
+</details>
+
 | Theme | Look | Main text | Muted text | Accent |
 | --- | --- | --- | --- | --- |
 | Neon | Black window, neon-green accent. The original look. | 17.9:1 | 6.6:1 | 15.5:1 |
@@ -139,14 +177,29 @@ choice is saved.
 The numbers are contrast ratios against the window background. The minimum for
 normal text is 4.5:1, and every theme passes it. `tests/css.test.js` checks this.
 
-Priority colours are the same in every theme, so red always means Critical. The accent colour is not a priority colour. In Sakura, the pink accent and the
-Critical red are close in brightness. In Lagoon, the teal accent is close in
-brightness to the Medium yellow and the Low blue. The priority pills and the icon
-carry the priority, so the accent colour never has to be read as a priority.
+Priority colours are the same in every theme, so red always means Critical. The
+accent colour is not a priority colour. In Sakura, the pink accent and the Critical
+red are close in brightness. In Lagoon, the teal accent is close in brightness to
+the Medium yellow and the Low blue. The priority pills and the icon carry the
+priority, so the accent colour never has to be read as a priority.
 
 Omarchy uses Tokyo Night, which I believe is Omarchy's default. If your Omarchy
 theme uses other colours, change the `omarchy` values in `applet/applet.js`
 (`THEMES`) and in `applet/stylesheet.css`.
+
+## Screenshots
+
+To regenerate the theme screenshots in `docs/`, add the sample tasks, then run:
+
+```bash
+cd ~/LinuxUI/todo-list
+bash scripts/screenshot-themes.sh
+```
+
+The script opens the window in each theme, saves one screenshot per theme, and
+restores your theme afterwards. It needs a screenshot tool: `sudo apt install
+gnome-screenshot`. It refuses to run if the list is empty, so the images are never
+blank.
 
 ## How it works
 
@@ -166,6 +219,11 @@ but is not valid JSON, the applet refuses to overwrite it and logs the problem.
 A timer checks once a minute whether the day has changed. It only runs the daily
 reset. It never changes the tab, the search, which rows are open, or text you are
 typing.
+
+The applet also watches `~/.local/state/todo-list/toggle`. A line of words in that
+file is a command: `open`, `close`, or `theme NAME`. An empty file, or a timestamp
+written by the legacy shortcut command, toggles the window. The screenshot script
+uses this file.
 
 The applet logs its actions with the prefix `[todo-list]`.
 
@@ -202,6 +260,10 @@ custom shortcut, remove it (see Quick start).
 `cat ~/.local/state/todo-list/todos.json`. If it is missing and there was no
 Omarchy file to import, there was nothing to load.
 
+**A screenshot shows the terminal instead of the window.** The script captures the
+focused window. Check that the Todo List window opens on top before the capture,
+and send the output of the screenshot script if it doesn't.
+
 ## Tests
 
 ```bash
@@ -215,10 +277,11 @@ sudo. It should end with `all test files passed`.
 - `tests/logic.test.js`: sorting, the daily reset, the file format, badge rules,
   messages, and the shortcut label.
 - `tests/flow.test.js`: clicks, key presses, timer ticks, the keyboard-only path,
-  the built-in shortcut, themes, the critical icon, outside clicks, the bottom bar,
-  and file safety.
+  the built-in shortcut, the trigger file, themes, the critical icon, outside
+  clicks, the bottom bar, and file safety.
 - `tests/css.test.js`: the stylesheet's braces, each theme's classes, and contrast.
 - `tests/shortcut.test.sh`: `set-shortcut.sh`, using a fake `gsettings`.
+- `tests/screenshot.test.sh`: `screenshot-themes.sh`, using a fake screenshot tool.
 - `tests/install.test.sh`: install and uninstall in a temporary home.
 
 The Cinnamon APIs are replaced by mocks in `tests/mock-cinnamon.js`. The mocks
@@ -229,7 +292,9 @@ applet depends on them. They have not been checked against a running Cinnamon.
 
 ```
 applet/        applet.js, stylesheet.css, metadata.json, icon-symbolic.svg
-scripts/       set-shortcut.sh (removes an old custom shortcut), todo-list-toggle (legacy)
+docs/          screenshots used in this README
+scripts/       screenshot-themes.sh, set-shortcut.sh (removes an old custom shortcut),
+               todo-list-toggle (legacy command)
 tests/         automated tests and the mocks they use
 install.sh     installs the applet and the legacy command (no sudo)
 uninstall.sh   removes the applet and the legacy command (keeps your tasks)

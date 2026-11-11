@@ -734,4 +734,32 @@ check('Lagoon is saved and remembered, and its badge uses the teal accent', () =
     assert.ok(app.applet._badge.style.includes('#4FD1C5'));
 });
 
+check('the trigger file can switch theme and open the window', () => {
+    freshHome('trigger-command');
+    const app = startApplet();
+    const trigger = triggerMonitor(app);
+    fs.writeFileSync(path.join(process.env.HOME, '.local', 'state', 'todo-list', 'toggle'), 'theme paper open');
+    trigger.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
+    assert.ok(dialogClasses(app).has('todo-theme-paper'), 'theme switched');
+    assert.strictEqual(app.menu.isOpen, true, 'window opened');
+    fireTimers(app.world, 1000);
+    fs.writeFileSync(path.join(process.env.HOME, '.local', 'state', 'todo-list', 'toggle'), 'close');
+    trigger.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
+    assert.strictEqual(app.menu.isOpen, false, 'window closed');
+});
+
+check('a timestamp from the shortcut command still toggles, and an unknown theme is ignored', () => {
+    freshHome('trigger-timestamp');
+    const app = startApplet();
+    const trigger = triggerMonitor(app);
+    fs.writeFileSync(path.join(process.env.HOME, '.local', 'state', 'todo-list', 'toggle'), '1731300000123456789\n');
+    fireTimers(app.world, 1000);
+    trigger.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
+    assert.strictEqual(app.menu.isOpen, true, 'timestamp opened the window');
+    fireTimers(app.world, 1000);
+    fs.writeFileSync(path.join(process.env.HOME, '.local', 'state', 'todo-list', 'toggle'), 'theme purple');
+    trigger.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
+    assert.ok(dialogClasses(app).has('todo-theme-neon'), 'unknown theme leaves the theme alone');
+});
+
 summary();
