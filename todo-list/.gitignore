@@ -1,0 +1,5 @@
+# Editor and OS files
+.DS_Store
+*.swp
+# Temporary files the applet writes next to the tasks file
+*.tmp

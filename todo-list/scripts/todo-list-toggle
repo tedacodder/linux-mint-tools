@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Opens or closes the Todo List window. Bind this command to a keyboard
+# shortcut in Cinnamon's keyboard settings. The applet must be loaded.
+set -eu
+dir="${XDG_STATE_HOME:-$HOME/.local/state}/todo-list"
+mkdir -p "$dir"
+# Write a new value each time, so the applet sees a real change.
+printf '%s\n' "$(date +%s%N)" > "$dir/toggle"
