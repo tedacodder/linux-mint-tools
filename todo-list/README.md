@@ -4,7 +4,7 @@ A short, prioritized todo list in your Cinnamon panel. The panel icon shows how
 many tasks are ongoing, coloured by the most urgent one. Open the list with a
 click or with **Ctrl+Alt+D**. Everything works from the keyboard.
 
-![The Todo List window in Neon](docs/window-neon.png)
+![The Todo List cycling through all six themes](docs/themes.gif)
 
 A port of [check_ur_todo](https://github.com/Aston-lewis/check_ur_todo), which is
 based on [omarchy-priority-todos](https://github.com/dejan994/omarchy-priority-todos)
@@ -152,18 +152,15 @@ Delete with `x`, or the **Delete** button.
 Click **Theme** in the header, or press `t`, to move through the themes. Your
 choice is saved.
 
-<details>
-<summary>See all six themes</summary>
+All six themes, side by side:
 
 | Neon | Omarchy |
 | --- | --- |
 | ![Neon](docs/window-neon.png) | ![Omarchy](docs/window-omarchy.png) |
-| Ember | Paper |
+| **Ember** | **Paper** |
 | ![Ember](docs/window-ember.png) | ![Paper](docs/window-paper.png) |
-| Sakura | Lagoon |
+| **Sakura** | **Lagoon** |
 | ![Sakura](docs/window-sakura.png) | ![Lagoon](docs/window-lagoon.png) |
-
-</details>
 
 | Theme | Look | Main text | Muted text | Accent |
 | --- | --- | --- | --- | --- |
@@ -189,17 +186,33 @@ theme uses other colours, change the `omarchy` values in `applet/applet.js`
 
 ## Screenshots
 
-To regenerate the theme screenshots in `docs/`, add the sample tasks, then run:
+The images in `docs/` are made in two steps. Both steps use the same sample tasks,
+so every theme shows the same list.
 
-```bash
-cd ~/LinuxUI/todo-list
-bash scripts/screenshot-themes.sh
-```
+1. **Take the six screenshots.** Add the sample tasks in the window (one Critical,
+   one High, one Medium, one Low, and one daily task), then run:
 
-The script opens the window in each theme, saves one screenshot per theme, and
-restores your theme afterwards. It needs a screenshot tool: `sudo apt install
-gnome-screenshot`. It refuses to run if the list is empty, so the images are never
-blank.
+   ```bash
+   cd ~/LinuxUI/todo-list
+   bash scripts/screenshot-themes.sh
+   ```
+
+   The script opens the window in each theme, saves `docs/window-<theme>.png`, and
+   restores your theme afterwards. It needs a screenshot tool:
+   `sudo apt install gnome-screenshot`. It refuses to run if the list is empty.
+
+2. **Build the animated GIF.** This cycles through all six themes, and it is the
+   image at the top of this README:
+
+   ```bash
+   bash scripts/make-theme-gif.sh
+   ```
+
+   It needs ImageMagick: `sudo apt install imagemagick`. Each theme is shown for
+   1.8 seconds. Set `GIF_DELAY=2.5` to change that.
+
+GitHub can't show a scrolling carousel, so the GIF plays the themes in a loop, and
+the grid in the Themes section shows all six without any clicking.
 
 ## How it works
 
@@ -282,6 +295,7 @@ sudo. It should end with `all test files passed`.
 - `tests/css.test.js`: the stylesheet's braces, each theme's classes, and contrast.
 - `tests/shortcut.test.sh`: `set-shortcut.sh`, using a fake `gsettings`.
 - `tests/screenshot.test.sh`: `screenshot-themes.sh`, using a fake screenshot tool.
+- `tests/theme-gif.test.sh`: `make-theme-gif.sh`, using a fake ImageMagick.
 - `tests/install.test.sh`: install and uninstall in a temporary home.
 
 The Cinnamon APIs are replaced by mocks in `tests/mock-cinnamon.js`. The mocks
@@ -292,9 +306,9 @@ applet depends on them. They have not been checked against a running Cinnamon.
 
 ```
 applet/        applet.js, stylesheet.css, metadata.json, icon-symbolic.svg
-docs/          screenshots used in this README
-scripts/       screenshot-themes.sh, set-shortcut.sh (removes an old custom shortcut),
-               todo-list-toggle (legacy command)
+docs/          screenshots and themes.gif, used in this README
+scripts/       screenshot-themes.sh, make-theme-gif.sh, set-shortcut.sh (removes an old
+               custom shortcut), todo-list-toggle (legacy command)
 tests/         automated tests and the mocks they use
 install.sh     installs the applet and the legacy command (no sudo)
 uninstall.sh   removes the applet and the legacy command (keeps your tasks)
