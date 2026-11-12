@@ -6,9 +6,9 @@ click or with **Ctrl+Alt+D**. Everything works from the keyboard.
 
 ![The Todo List cycling through all six themes](docs/themes.gif)
 
-A port of [check_ur_todo](https://github.com/Aston-lewis/check_ur_todo), which is
+Based on [check_ur_todo](https://github.com/Aston-lewis/check_ur_todo), which is
 based on [omarchy-priority-todos](https://github.com/dejan994/omarchy-priority-todos)
-by Dejan V. Both are MIT licensed.
+by Dejan V. Licensed under the MIT License. See [LICENSE](LICENSE).
 
 > [!NOTE]
 > Your tasks stay on this machine, in `~/.local/state/todo-list/todos.json`.
@@ -25,42 +25,17 @@ Restart Cinnamon: press Alt+F2, type `r`, and press Enter. Right-click the panel
 choose **Applets**, and add **Todo List**. Press **Ctrl+Alt+D** to open it.
 
 > [!IMPORTANT]
-> If you added Ctrl+Alt+D earlier as a Cinnamon custom shortcut, remove it first.
-> Otherwise one press opens and closes the window straight away.
->
-> ```bash
-> bash scripts/set-shortcut.sh --remove
-> ```
-
-## Status
-
-Tested on Linux Mint 22 with Cinnamon 6.6 on X11.
-
-Confirmed in a real session:
-
-- The panel icon loads, and the window opens and closes from it.
-- Typing works in the add and search fields.
-- A click outside the window closes it.
-- The Theme button shows the current theme and cycles through them.
-
-Checked only with the automated tests, not yet in a real session:
-
-- Ctrl+Alt+D, the built-in shortcut, and the shortcut text in the bottom bar.
-- Row hover highlights and row buttons.
-- Keyboard-only use: Tab order, Up and Down, and the row keys `c`, `p`, `e`, `x`.
-- The critical icon colour.
-- The daily reset across a real day change.
-- The Omarchy file import, which needs an Omarchy file to test against.
-
-If you find a problem, please open an issue with the output of
-`grep "todo-list" ~/.xsession-errors | tail -20`.
+> If you added Ctrl+Alt+D earlier as a custom shortcut in **System Settings >
+> Keyboard > Custom Shortcuts**, delete it. Otherwise one press opens and closes the
+> window straight away. Earlier builds also installed a `todo-list-toggle` command.
+> You can delete `~/.local/bin/todo-list-toggle` as well.
 
 ## Keyboard shortcut
 
 **Ctrl+Alt+D** opens and closes the list. The applet registers the key itself, so
 no other setup is needed. It works while the applet is on the panel.
 
-The bottom bar of the window shows the shortcut as text, on the right.
+The bottom bar of the window shows the shortcut as text.
 
 To use a different key, change `HOTKEY` near the top of `applet/applet.js`, for
 example `'<Super>t'`. Then run `bash install.sh` and restart Cinnamon. The bottom
@@ -72,8 +47,6 @@ bar updates to match. Key names:
 | `<Alt>` | Alt |
 | `<Super>` | Windows key |
 | `<Shift>` | Shift |
-
-Pick a key that no other program uses.
 
 If the key does nothing, restart Cinnamon, and check that the applet is on the
 panel. The log shows `built-in shortcut ... is off` if the key could not be
@@ -186,33 +159,18 @@ theme uses other colours, change the `omarchy` values in `applet/applet.js`
 
 ## Screenshots
 
-The images in `docs/` are made in two steps. Both steps use the same sample tasks,
-so every theme shows the same list.
+The images in `docs/` are made by hand, using the same sample tasks in every
+theme: one Critical, one High, one Medium, one Low, and one daily task. Take each
+screenshot with the window open, for example with `gnome-screenshot -w`, and save
+it as `docs/window-<theme>.png`.
 
-1. **Take the six screenshots.** Add the sample tasks in the window (one Critical,
-   one High, one Medium, one Low, and one daily task), then run:
+Once the six images exist, build the animated GIF at the top of this README:
 
-   ```bash
-   cd ~/LinuxUI/todo-list
-   bash scripts/screenshot-themes.sh
-   ```
+```bash
+bash scripts/make-theme-gif.sh     # needs ImageMagick: sudo apt install imagemagick
+```
 
-   The script opens the window in each theme, saves `docs/window-<theme>.png`, and
-   restores your theme afterwards. It needs a screenshot tool:
-   `sudo apt install gnome-screenshot`. It refuses to run if the list is empty.
-
-2. **Build the animated GIF.** This cycles through all six themes, and it is the
-   image at the top of this README:
-
-   ```bash
-   bash scripts/make-theme-gif.sh
-   ```
-
-   It needs ImageMagick: `sudo apt install imagemagick`. Each theme is shown for
-   1.8 seconds. Set `GIF_DELAY=2.5` to change that.
-
-GitHub can't show a scrolling carousel, so the GIF plays the themes in a loop, and
-the grid in the Themes section shows all six without any clicking.
+Each theme is shown for 1.8 seconds. Set `GIF_DELAY=2.5` to change that.
 
 ## How it works
 
@@ -225,18 +183,14 @@ The sorting, filtering, daily reset, and file reading and writing are pure
 functions near the top of `applet.js`. They don't call Cinnamon, so the Node tests
 can run them directly.
 
-Each change is saved straight away. The file is written to a temporary name and
-moved over the old one, so a crash cannot leave half a file. If `todos.json` exists
-but is not valid JSON, the applet refuses to overwrite it and logs the problem.
+Each change is saved straight away, without blocking the panel. Saves are queued,
+so an older save never overwrites a newer one. The file is replaced in one step,
+so a crash cannot leave half a file. If `todos.json` exists but is not valid JSON,
+the applet refuses to overwrite it and logs the problem.
 
 A timer checks once a minute whether the day has changed. It only runs the daily
 reset. It never changes the tab, the search, which rows are open, or text you are
 typing.
-
-The applet also watches `~/.local/state/todo-list/toggle`. A line of words in that
-file is a command: `open`, `close`, or `theme NAME`. An empty file, or a timestamp
-written by the legacy shortcut command, toggles the window. The screenshot script
-uses this file.
 
 The applet logs its actions with the prefix `[todo-list]`.
 
@@ -262,20 +216,16 @@ grep "todo-list" ~/.xsession-errors | tail -20
 ```
 
 **The icon does not appear.** Check the files are installed:
-`ls ~/.local/share/cinnamon/applets/todo-list@tedacodder-linux`. Then restart
-Cinnamon with Alt+F2, `r`.
+`ls ~/.local/share/cinnamon/applets/todo-list@tedacodder`. Then restart Cinnamon
+with Alt+F2, `r`.
 
 **Ctrl+Alt+D does nothing.** Check the applet is on the panel. Restart Cinnamon.
-Search the log for `built-in shortcut`. If you set the shortcut earlier as a
-custom shortcut, remove it (see Quick start).
+Search the log for `built-in shortcut`. If you set the shortcut earlier as a custom
+shortcut, delete it (see Quick start).
 
 **The list looks empty but you expect tasks.** Check the file:
 `cat ~/.local/state/todo-list/todos.json`. If it is missing and there was no
 Omarchy file to import, there was nothing to load.
-
-**A screenshot shows the terminal instead of the window.** The script captures the
-focused window. Check that the Todo List window opens on top before the capture,
-and send the output of the screenshot script if it doesn't.
 
 ## Tests
 
@@ -290,11 +240,9 @@ sudo. It should end with `all test files passed`.
 - `tests/logic.test.js`: sorting, the daily reset, the file format, badge rules,
   messages, and the shortcut label.
 - `tests/flow.test.js`: clicks, key presses, timer ticks, the keyboard-only path,
-  the built-in shortcut, the trigger file, themes, the critical icon, outside
-  clicks, the bottom bar, and file safety.
+  the built-in shortcut, themes, the critical icon, outside clicks, the bottom bar,
+  and file safety.
 - `tests/css.test.js`: the stylesheet's braces, each theme's classes, and contrast.
-- `tests/shortcut.test.sh`: `set-shortcut.sh`, using a fake `gsettings`.
-- `tests/screenshot.test.sh`: `screenshot-themes.sh`, using a fake screenshot tool.
 - `tests/theme-gif.test.sh`: `make-theme-gif.sh`, using a fake ImageMagick.
 - `tests/install.test.sh`: install and uninstall in a temporary home.
 
@@ -307,12 +255,13 @@ applet depends on them. They have not been checked against a running Cinnamon.
 ```
 applet/        applet.js, stylesheet.css, metadata.json, icon-symbolic.svg
 docs/          screenshots and themes.gif, used in this README
-scripts/       screenshot-themes.sh, make-theme-gif.sh, set-shortcut.sh (removes an old
-               custom shortcut), todo-list-toggle (legacy command)
+scripts/       make-theme-gif.sh
 tests/         automated tests and the mocks they use
-install.sh     installs the applet and the legacy command (no sudo)
-uninstall.sh   removes the applet and the legacy command (keeps your tasks)
+install.sh     installs the applet (no sudo)
+uninstall.sh   removes the applet (keeps your tasks)
 DESIGN.md      the design brief and colour tokens
+LICENSE        MIT License for this project
+LICENSE-third-party.txt   the upstream MIT License, unchanged
 ```
 
 ## Uninstall
@@ -321,11 +270,19 @@ DESIGN.md      the design brief and colour tokens
 bash uninstall.sh
 ```
 
-This removes the applet and the legacy command. Your tasks in
-`~/.local/state/todo-list/` are kept. Delete that folder yourself if you want them
-gone. Removing the applet from the panel also removes its keyboard shortcut.
+This removes the applet. Your tasks in `~/.local/state/todo-list/` are kept. Delete
+that folder yourself if you want them gone. Removing the applet from the panel also
+removes its keyboard shortcut.
+
+## Licence
+
+Copyright (c) 2026 tedacodder. Released under the MIT License. See [LICENSE](LICENSE).
+
+Portions are derived from check_ur_todo and omarchy-priority-todos, both MIT
+licensed. The upstream licence text is kept unchanged in
+[LICENSE-third-party.txt](LICENSE-third-party.txt).
 
 ## Credits
 
 Based on check_ur_todo by Aston Lewis, which is based on omarchy-priority-todos by
-Dejan V. Both MIT licensed.
+Dejan V.

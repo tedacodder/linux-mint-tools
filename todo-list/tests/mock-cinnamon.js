@@ -240,29 +240,49 @@ function makeCinnamon(world) {
         cancel() { this.cancelled = true; }
     }
 
+    // Reads and writes complete asynchronously, as in GIO. A read is delivered on the
+    // next idle step (see flushPending). A write reaches the disk at once, and its
+    // callback is delivered on the next idle step.
     class GFile {
         constructor(p) { this.p = p; }
+        load_contents_async(cancellable, callback) {
+            const path = this.p;
+            world.pending = world.pending || [];
+            world.pending.push(() => {
+                try {
+                    const buf = fs.readFileSync(path);
+                    callback(this, { data: new Uint8Array(buf) });
+                } catch (e) {
+                    callback(this, { error: e, notFound: e.code === 'ENOENT' });
+                }
+            });
+        }
+        load_contents_finish(res) {
+            if (res.error) {
+                const err = new Error(res.error.message);
+                err.matches = (domain, code) => !!res.notFound && code === Gio.IOErrorEnum.NOT_FOUND;
+                throw err;
+            }
+            return [true, res.data, ''];
+        }
+        replace_contents_async(bytes, etag, backup, flags, cancellable, callback) {
+            fs.writeFileSync(this.p, Buffer.from(bytes));
+            world.pending = world.pending || [];
+            world.pending.push(() => callback(this, {}));
+        }
+        replace_contents_finish() { return [true, '']; }
         move(dest) {
             // Like Gio.File.move with OVERWRITE: replaces the destination.
             fs.renameSync(this.p, dest.p);
             return true;
         }
+        query_exists() { return fs.existsSync(this.p); }
         monitor_file() {
             if (world.failMonitor) throw new Error('monitor unavailable (test)');
             const monitor = new FileMonitor(this.p);
             world.monitors = world.monitors || [];
             world.monitors.push(monitor);
             return monitor;
-        }
-        query_exists() { return fs.existsSync(this.p); }
-        load_contents() {
-            // The real call throws a GLib error when the file is missing.
-            const buf = fs.readFileSync(this.p);
-            return [true, new Uint8Array(buf), ''];
-        }
-        replace_contents(bytes) {
-            fs.writeFileSync(this.p, Buffer.from(bytes));
-            return [true, ''];
         }
     }
 
@@ -278,6 +298,8 @@ function makeCinnamon(world) {
         get_home_dir: () => process.env.HOME,
         get_user_state_dir: () => process.env.XDG_STATE_HOME
             || path.join(process.env.HOME, '.local', 'state'),
+        get_user_data_dir: () => process.env.XDG_DATA_HOME
+            || path.join(process.env.HOME, '.local', 'share'),
         build_filenamev: (parts) => path.join(...parts),
         mkdir_with_parents: (dir) => {
             fs.mkdirSync(dir, { recursive: true });
@@ -304,6 +326,7 @@ function makeCinnamon(world) {
     const Gio = {
         File: { new_for_path: (p) => new GFile(p) },
         FileCreateFlags: { NONE: 0 },
+        IOErrorEnum: { NOT_FOUND: 1 },
         FileCopyFlags: { NONE: 0, OVERWRITE: 1 },
         FileMonitorFlags: { NONE: 0 },
         FileMonitorEvent: { CHANGED: 0, CHANGES_DONE_HINT: 1, DELETED: 2, CREATED: 3, ATTRIBUTE_CHANGED: 4 },
@@ -348,7 +371,14 @@ function makeCinnamon(world) {
         },
     };
 
+    // Mirrors the gettext module. With no translations installed, text is returned unchanged.
+    const gettext = {
+        bindtextdomain: () => {},
+        dgettext: (domain, text) => text,
+    };
+
     const imports = {
+        gettext: gettext,
         ui: {
             main: { keybindingManager },
             applet: { TextIconApplet, AppletPopupMenu },

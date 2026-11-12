@@ -8,7 +8,7 @@ require_temp_home
 fail() { echo "  FAIL  $1" >&2; exit 1; }
 pass() { echo "  ok    $1"; }
 
-UUID="todo-list@tedacodder-linux"
+UUID="todo-list@tedacodder"
 DEST="$HOME/.local/share/cinnamon/applets/$UUID"
 STATE="$HOME/.local/state/todo-list"
 
@@ -18,8 +18,7 @@ for f in metadata.json applet.js stylesheet.css icon-symbolic.svg; do
 done
 pass "install copies the four applet files"
 
-[ -x "$HOME/.local/bin/todo-list-toggle" ] || fail "install did not put the shortcut command in ~/.local/bin"
-pass "install puts the shortcut command in ~/.local/bin"
+
 
 if ! grep -q "\"uuid\": \"$UUID\"" "$DEST/metadata.json"; then
   fail "installed metadata.json has the wrong uuid"
@@ -35,8 +34,7 @@ echo '{"version":2,"tasks":[]}' > "$STATE/todos.json"
 bash "$PROJECT_DIR/uninstall.sh" > /dev/null
 [ ! -d "$DEST" ] || fail "uninstall left the applet folder behind"
 pass "uninstall removes the applet folder"
-[ ! -e "$HOME/.local/bin/todo-list-toggle" ] || fail "uninstall left the shortcut command behind"
-pass "uninstall removes the shortcut command"
+
 [ -f "$STATE/todos.json" ] || fail "uninstall deleted the tasks file"
 pass "uninstall keeps the tasks file"
 

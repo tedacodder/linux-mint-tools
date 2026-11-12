@@ -36,11 +36,21 @@ function summary() {
 }
 
 // Gives a case its own HOME under the temp root, so cases never share files.
+// Runs the asynchronous work that has been queued: finished reads and writes.
+// Cinnamon does this on its main loop, between events.
+let lastWorld = null;
+function flushPending(world) {
+    while (world && world.pending && world.pending.length) {
+        world.pending.shift()();
+    }
+}
+
 function freshHome(name) {
     const dir = path.join(BASE_HOME, name);
     fs.mkdirSync(dir, { recursive: true });
     process.env.HOME = dir;
     delete process.env.XDG_STATE_HOME;
+    delete process.env.XDG_DATA_HOME;
     return dir;
 }
 
@@ -55,6 +65,7 @@ function oldStorePath() {
     return path.join(process.env.HOME, '.local', 'state', 'omarchy', 'todos.json');
 }
 function readStore() {
+    flushPending(lastWorld);
     return JSON.parse(fs.readFileSync(newStorePath(), 'utf8'));
 }
 
@@ -71,6 +82,13 @@ function startApplet(startIso = '2026-11-10T10:00:00', options = {}) {
     }
     const sandbox = { imports: cinnamon.imports, global: cinnamon.global, Date: FakeDate, console };
     vm.createContext(sandbox);
+    // Cinnamon's JavaScript environment provides String.prototype.format, with %s and %d.
+    vm.runInContext(`
+        String.prototype.format = function () {
+            let i = 0;
+            const args = arguments;
+            return this.replace(/%[sd]/g, () => String(args[i++]));
+        };`, sandbox);
     vm.runInContext(APPLET_SRC + `
 ;globalThis.__api = {
     TodoListApplet, main, parseStore, serialize, localDateKey, rollDailyTasks,
@@ -80,6 +98,8 @@ function startApplet(startIso = '2026-11-10T10:00:00', options = {}) {
 };`, sandbox, { filename: 'applet.js' });
     const api = sandbox.__api;
     const applet = api.main({}, 0, 24, 1);
+    flushPending(world);
+    lastWorld = world;
     world.root = applet._dialog;
     return { applet, api, world, menu: applet._dialog };
 }
@@ -121,5 +141,5 @@ function pressKey(app, sym, state = 0) { return sendKey(app.world, new KeyEvent(
 
 module.exports = {
     check, summary, freshHome, startApplet, fireTimers, findAll, findButton, findEntry,
-    press, type, pressKey, pressAt, settingsFile, newStorePath, oldStorePath, readStore, K, DAY_MS,
+    press, type, pressKey, pressAt, settingsFile, newStorePath, oldStorePath, readStore, flushPending, K, DAY_MS,
 };

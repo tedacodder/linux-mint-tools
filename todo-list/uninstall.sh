@@ -2,7 +2,7 @@
 # Removes the applet files. Your tasks in ~/.local/state/todo-list/ are kept.
 set -euo pipefail
 
-UUID="todo-list@tedacodder-linux"
+UUID="todo-list@tedacodder"
 DEST="$HOME/.local/share/cinnamon/applets/$UUID"
 
 if [ -d "$DEST" ]; then
@@ -10,11 +10,6 @@ if [ -d "$DEST" ]; then
   echo "Removed $DEST"
 else
   echo "Nothing to remove: $DEST does not exist"
-fi
-
-if [ -f "$HOME/.local/bin/todo-list-toggle" ]; then
-  rm -f -- "$HOME/.local/bin/todo-list-toggle"
-  echo "Removed $HOME/.local/bin/todo-list-toggle"
 fi
 
 echo "Your tasks were kept in $HOME/.local/state/todo-list/ (delete that folder yourself to remove them)."

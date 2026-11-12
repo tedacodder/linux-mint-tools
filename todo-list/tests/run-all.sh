@@ -30,8 +30,6 @@ for t in "$TESTS_DIR"/*.test.js; do
   run_one "$(basename "$t")" node "$t"
 done
 run_one "install.test.sh" bash "$TESTS_DIR/install.test.sh"
-run_one "shortcut.test.sh" bash "$TESTS_DIR/shortcut.test.sh"
-run_one "screenshot.test.sh" bash "$TESTS_DIR/screenshot.test.sh"
 run_one "theme-gif.test.sh" bash "$TESTS_DIR/theme-gif.test.sh"
 
 echo

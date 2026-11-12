@@ -1,5 +1,5 @@
 {
-    "uuid": "todo-list@tedacodder-linux",
+    "uuid": "todo-list@tedacodder",
     "name": "Todo List",
     "description": "Short prioritized todo list in the panel: daily, backlog, ongoing and completed tasks",
     "max-instances": 1,

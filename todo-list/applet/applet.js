@@ -1,3 +1,8 @@
+// Copyright (c) 2026 tedacodder. Released under the MIT License (see LICENSE).
+// Portions derived from check_ur_todo (Copyright (c) 2026 Dejan Vitasovic and
+// Copyright (c) 2026 Aston Lewis), itself based on omarchy-priority-todos. The
+// upstream MIT notice is in LICENSE-third-party.txt.
+
 // Todo List: a Cinnamon panel applet for a short, prioritized task list.
 // Port of check_ur_todo (MIT, Aston Lewis), itself based on
 // omarchy-priority-todos by Dejan V. (MIT). See README.md for credits.
@@ -13,9 +18,16 @@ const Gio = imports.gi.Gio;
 const Clutter = imports.gi.Clutter;
 const ByteArray = imports.byteArray;
 const Main = imports.ui.main;
+const Gettext = imports.gettext;
 
-const UUID = 'todo-list@tedacodder-linux';
-const APPLET_DIR = GLib.get_home_dir() + '/.local/share/cinnamon/applets/' + UUID;
+const UUID = 'todo-list@tedacodder';
+
+// Translations: the .po files live in the applet's locale folder.
+Gettext.bindtextdomain(UUID, GLib.get_user_data_dir() + '/locale');
+function _(text) {
+    return Gettext.dgettext(UUID, text);
+}
+const APPLET_DIR = GLib.get_user_data_dir() + '/cinnamon/applets/' + UUID;
 
 // Themes. The window's colours come from stylesheet.css, where each theme has
 // its own block. The values here are used for the badge and the daily edge.
@@ -59,7 +71,6 @@ const PRIORITY_COLORS = {
     low: '#3D8FD9',
 };
 const DAILY_CHECK_SECONDS = 60;   // how often the daily reset is checked
-const TOGGLE_DEBOUNCE_MS = 400;   // one shortcut press can touch the file twice
 
 // The keyboard shortcut that opens and closes the window. To use another key,
 // change HOTKEY, for example to '<Super>t'. Format: <Primary> Ctrl, <Alt>, <Super>, <Shift>.
@@ -433,23 +444,22 @@ function settingsPath() {
 }
 
 // The saved theme, or neon if nothing is saved or the saved name is unknown.
-function loadTheme() {
-    try {
-        const text = readText(settingsPath());
-        if (text === null) return 'neon';
-        const name = JSON.parse(text).theme;
-        return has(THEMES, name) ? name : 'neon';
-    } catch (e) {
-        return 'neon';
-    }
+function loadThemeAsync(callback) {
+    readTextAsync(settingsPath(), (text) => {
+        let name = 'neon';
+        try {
+            if (text !== null && has(THEMES, JSON.parse(text).theme)) name = JSON.parse(text).theme;
+        } catch (e) {
+            name = 'neon';
+        }
+        callback(name);
+    });
 }
 
-function saveTheme(name) {
-    try {
-        writeText(settingsPath(), JSON.stringify({ theme: name }, null, 2) + '\n');
-    } catch (e) {
-        global.log('[todo-list] could not save the theme: ' + e);
-    }
+function saveThemeAsync(name) {
+    writeTextAsync(settingsPath(), JSON.stringify({ theme: name }, null, 2) + '\n', (error) => {
+        if (error) global.log('[todo-list] could not save the theme: ' + error);
+    });
 }
 
 function freshState() {
@@ -487,32 +497,50 @@ function oldStorePath() {
     return GLib.build_filenamev([GLib.get_user_state_dir(), 'omarchy', 'todos.json']);
 }
 
-// Returns the file text, or null when the file does not exist.
-function readText(path) {
-    const file = Gio.File.new_for_path(path);
-    if (!file.query_exists(null)) return null;
-    const result = file.load_contents(null);
-    if (!result[0]) return null;
-    return ByteArray.toString(result[1]);
+// Reads a file without blocking the panel. The callback gets (text, error).
+// text is null when the file does not exist. error is set when the file exists
+// but cannot be read.
+function readTextAsync(path, callback) {
+    Gio.File.new_for_path(path).load_contents_async(null, (file, res) => {
+        try {
+            const result = file.load_contents_finish(res);
+            callback(ByteArray.toString(result[1]), null);
+        } catch (e) {
+            if (e.matches && e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND)) callback(null, null);
+            else callback(null, e);
+        }
+    });
 }
 
-// Writes to a temp file, then renames it over the target, so a crash cannot
-// leave a half-written todos.json.
-function writeText(path, text) {
-    const dir = path.slice(0, path.lastIndexOf('/'));
-    if (GLib.mkdir_with_parents(dir, 0o755) !== 0) throw new Error('cannot create ' + dir);
-    const tmp = path + '.tmp';
-    const tmpFile = Gio.File.new_for_path(tmp);
-    tmpFile.replace_contents(ByteArray.fromString(text), null, false, Gio.FileCreateFlags.NONE, null);
-    tmpFile.move(Gio.File.new_for_path(path), Gio.FileCopyFlags.OVERWRITE, null, null);
+// Writes a file without blocking. Gio replaces the file in one step, so a crash
+// cannot leave half a file. The callback gets an error, or null on success.
+function writeTextAsync(path, text, callback) {
+    GLib.mkdir_with_parents(path.slice(0, path.lastIndexOf('/')), 0o755);
+    Gio.File.new_for_path(path).replace_contents_async(
+        ByteArray.fromString(text), null, false, Gio.FileCreateFlags.NONE, null,
+        (file, res) => {
+            try {
+                file.replace_contents_finish(res);
+                callback(null);
+            } catch (e) {
+                callback(e);
+            }
+        });
 }
 
-function loadStoreSource() {
-    const current = readText(newStorePath());
-    if (current !== null) return { text: current, source: 'new' };
-    const old = readText(oldStorePath());
-    if (old !== null) return { text: old, source: 'old' };
-    return { text: '', source: 'none' };
+// Finds the store on disk, and calls back with { text, source } where source is
+// 'new', 'old' or 'none'. Calls back with { error, source } if a file exists but
+// cannot be read.
+function loadStoreAsync(callback) {
+    readTextAsync(newStorePath(), (text, error) => {
+        if (error) return callback({ error: error, source: 'new' });
+        if (text !== null) return callback({ text: text, source: 'new' });
+        readTextAsync(oldStorePath(), (oldText, oldError) => {
+            if (oldError) return callback({ error: oldError, source: 'old' });
+            if (oldText !== null) return callback({ text: oldText, source: 'old' });
+            callback({ text: '', source: 'none' });
+        });
+    });
 }
 
 // Runs a command and returns its stdout. Kept from the Omarchy-to-Cinnamon
@@ -550,24 +578,25 @@ class TodoListApplet extends Applet.TextIconApplet {
     constructor(orientation, panelHeight, instanceId) {
         super(orientation, panelHeight, instanceId);
         this.state = freshState();
-        this.ui = { query: '', draftPriority: 'medium', expanded: {}, editing: {}, theme: loadTheme() };
+        this.ui = { query: '', draftPriority: 'medium', expanded: {}, editing: {}, theme: 'neon' };
         this._storeInvalid = false;
+        this._dirty = false;
+        this._writing = false;
         this._editEntries = [];
         this._pendingFocus = null;
         this._pendingRowFocus = null;
         this._rowTitles = [];
         this._tabButtons = [];
         this._isOpen = false;
-        this._lastToggle = 0;
 
         this.set_applet_icon_symbolic_path(APPLET_DIR + '/icon-symbolic.svg');
         this.set_applet_tooltip('Todo List');
 
         this._buildBadge();
         this._buildPopup();
-        this._watchShortcutTrigger();
         this._registerHotkey();
         this._loadFromDisk();
+        this._loadTheme();
         this._render();
 
         this._timerId = GLib.timeout_add_seconds(
@@ -580,9 +609,6 @@ class TodoListApplet extends Applet.TextIconApplet {
         else this._openDialog();
     }
 
-    // The keyboard shortcut runs todo-list-toggle, which touches this file.
-    // Each touch opens or closes the window. A single press can send two
-    // events, so events closer together than TOGGLE_DEBOUNCE_MS are ignored.
     // Ctrl+Alt+D is registered by the applet itself, with Cinnamon's keybinding
     // manager. It works while the applet is loaded. If registration fails, the
     // applet still loads, and the log says so.
@@ -593,53 +619,6 @@ class TodoListApplet extends Applet.TextIconApplet {
         } catch (e) {
             this._hotkeyOn = false;
             this._log('built-in shortcut ' + HOTKEY + ' is off: ' + e);
-        }
-    }
-
-    // If this fails, the applet still loads. Only the keyboard shortcut is off.
-    _watchShortcutTrigger() {
-        try {
-            const dir = GLib.build_filenamev([GLib.get_user_state_dir(), 'todo-list']);
-            GLib.mkdir_with_parents(dir, 0o755);
-            this._triggerPath = dir + '/toggle';
-            const file = Gio.File.new_for_path(this._triggerPath);
-            if (!file.query_exists(null)) {
-                file.replace_contents(ByteArray.fromString(''), null, false, Gio.FileCreateFlags.NONE, null);
-            }
-            this._triggerMonitor = file.monitor_file(Gio.FileMonitorFlags.NONE, null);
-            this._triggerMonitor.connect('changed', (monitor, f, other, eventType) => {
-                this._log('shortcut trigger event ' + eventType);
-                // Any change to the file counts. A touch reports an attribute
-                // change, and a write reports a content change.
-                if (eventType !== Gio.FileMonitorEvent.CHANGED
-                    && eventType !== Gio.FileMonitorEvent.CHANGES_DONE_HINT
-                    && eventType !== Gio.FileMonitorEvent.CREATED
-                    && eventType !== Gio.FileMonitorEvent.ATTRIBUTE_CHANGED) return;
-                const now = Date.now();
-                if (now - this._lastToggle < TOGGLE_DEBOUNCE_MS) return;
-                this._lastToggle = now;
-                this._log('shortcut trigger');
-                this._runTrigger(readText(this._triggerPath));
-            });
-        } catch (e) {
-            this._triggerMonitor = null;
-            this._log('keyboard shortcut is off; could not watch the toggle file: ' + e);
-        }
-    }
-
-    // What the trigger file asks for. A timestamp, or an empty file, toggles the
-    // window, which is what the shortcut command writes. Commands are words:
-    // "open", "close", and "theme NAME". For example "theme paper open".
-    _runTrigger(text) {
-        const words = trim(text).split(/\s+/).filter(w => w.length > 0);
-        if (words.length === 0 || /^[0-9]+$/.test(words[0])) {
-            this.on_applet_clicked();
-            return;
-        }
-        for (let i = 0; i < words.length; i++) {
-            if (words[i] === 'open') this._openDialog();
-            else if (words[i] === 'close') this._closeDialog();
-            else if (words[i] === 'theme' && i + 1 < words.length) this.setTheme(words[++i]);
         }
     }
 
@@ -662,13 +641,13 @@ class TodoListApplet extends Applet.TextIconApplet {
     _installOutsideClick() {
         if (this._outsideClickId) return;
         this._outsideClickId = global.stage.connect('captured-event', (stage, event) => {
-            if (event.type() !== Clutter.EventType.BUTTON_PRESS) return false;
+            if (event.type() !== Clutter.EventType.BUTTON_PRESS) return Clutter.EVENT_PROPAGATE;
             const src = event.get_source();
-            if (this._dialog.dialogLayout.contains(src)) return false;
-            if (this.actor.contains(src)) return false;
+            if (this._dialog.dialogLayout.contains(src)) return Clutter.EVENT_PROPAGATE;
+            if (this.actor.contains(src)) return Clutter.EVENT_PROPAGATE;
             this._log('closed by a click outside the window');
             this._closeDialog();
-            return false;
+            return Clutter.EVENT_PROPAGATE;
         });
     }
 
@@ -692,7 +671,7 @@ class TodoListApplet extends Applet.TextIconApplet {
         }
         this.ui.theme = name;
         this._applyTheme();
-        saveTheme(this.ui.theme);
+        saveThemeAsync(this.ui.theme);
         this._log('theme: ' + this.ui.theme);
         return this.ui.theme;
     }
@@ -704,7 +683,7 @@ class TodoListApplet extends Applet.TextIconApplet {
     _applyTheme() {
         THEME_ORDER.forEach(name => this._dialog.dialogLayout.remove_style_class_name(themeClass(name)));
         this._dialog.dialogLayout.add_style_class_name(themeClass(this.ui.theme));
-        this._themeButton.set_label('Theme: ' + THEMES[this.ui.theme].label);
+        this._themeButton.set_label(_('Theme: %s').format(_(THEMES[this.ui.theme].label)));
         this._updateBadge();
     }
 
@@ -724,11 +703,9 @@ class TodoListApplet extends Applet.TextIconApplet {
     on_applet_removed_from_panel() {
         if (this._hotkeyOn) Main.keybindingManager.removeHotKey(HOTKEY_NAME);
         this._hotkeyOn = false;
-        if (this._triggerMonitor) this._triggerMonitor.cancel();
         this._removeOutsideClick();
         if (this._timerId) GLib.source_remove(this._timerId);
         this._timerId = 0;
-        this._triggerMonitor = null;
         this._dialog.close();
         this._dialog.destroy();
         this._log('removed from panel');
@@ -741,39 +718,63 @@ class TodoListApplet extends Applet.TextIconApplet {
     // ----- store -----
 
     _loadFromDisk() {
-        const found = loadStoreSource();
-        const store = parseStore(found.text);
-        if (!store.valid) {
-            this._storeInvalid = true;
-            this._log('todos.json is not valid JSON; leaving it untouched and not saving');
-            return;
-        }
-        this.state = {
-            tasks: store.tasks,
-            dailyTasks: store.dailyTasks,
-            dailyResetDate: store.dailyResetDate,
-            activeTab: store.activeTab,
-        };
-        const rolled = this._applyRollover();
-        if (found.source === 'old') {
-            this._log('imported tasks once from the Omarchy file; that file is not changed');
-            this._save();
-        } else if (found.source === 'new' && rolled) {
-            this._save();
-        }
+        loadStoreAsync(found => {
+            if (found.error) {
+                this._storeInvalid = true;
+                this._log('todos.json could not be read; leaving it untouched: ' + found.error);
+                this._render();
+                return;
+            }
+            const store = parseStore(found.text);
+            if (!store.valid) {
+                this._storeInvalid = true;
+                this._log('todos.json is not valid JSON; leaving it untouched and not saving');
+                this._render();
+                return;
+            }
+            this.state = {
+                tasks: store.tasks,
+                dailyTasks: store.dailyTasks,
+                dailyResetDate: store.dailyResetDate,
+                activeTab: store.activeTab,
+            };
+            const rolled = this._applyRollover();
+            if (found.source === 'old') {
+                this._log('imported tasks once from the Omarchy file; that file is not changed');
+                this._save();
+            } else if (found.source === 'new' && rolled) {
+                this._save();
+            }
+            this._render();
+        });
     }
 
+    _loadTheme() {
+        loadThemeAsync(name => {
+            this.ui.theme = name;
+            this._applyTheme();
+        });
+    }
+
+    // Saves are queued. Only one write runs at a time, and it always writes the
+    // latest state, so an older save can never overwrite a newer one.
     _save() {
-        if (this._storeInvalid) return false;
-        try {
-            writeText(newStorePath(), serialize(
-                this.state.tasks, this.state.activeTab,
-                this.state.dailyTasks, this.state.dailyResetDate));
-            return true;
-        } catch (e) {
-            this._log('could not save: ' + e);
-            return false;
-        }
+        if (this._storeInvalid) return;
+        this._dirty = true;
+        this._flush();
+    }
+
+    _flush() {
+        if (this._writing || !this._dirty) return;
+        this._dirty = false;
+        this._writing = true;
+        const text = serialize(this.state.tasks, this.state.activeTab,
+            this.state.dailyTasks, this.state.dailyResetDate);
+        writeTextAsync(newStorePath(), text, error => {
+            this._writing = false;
+            if (error) this._log('could not save: ' + error);
+            this._flush();
+        });
     }
 
     _persist() {
@@ -822,18 +823,18 @@ class TodoListApplet extends Applet.TextIconApplet {
         this._root = new St.BoxLayout({ vertical: true, style_class: 'todo-root' });
 
         const header = new St.BoxLayout({ style_class: 'todo-header' });
-        const title = new St.Label({ style_class: 'todo-title', text: 'Todo List' });
+        const title = new St.Label({ style_class: 'todo-title', text: _('Todo List') });
         title.x_expand = true;
         header.add_child(title);
         this._themeButton = new St.Button({ label: '', style_class: 'todo-action todo-theme-button' });
         this._themeButton.connect('clicked', () => this.cycleTheme());
         header.add_child(this._themeButton);
-        this._closeButton = new St.Button({ label: 'Close', style_class: 'todo-action' });
+        this._closeButton = new St.Button({ label: _('Close'), style_class: 'todo-action' });
         this._closeButton.connect('clicked', () => this._closeDialog());
         header.add_child(this._closeButton);
         this._root.add_child(header);
 
-        this._search = new St.Entry({ style_class: 'todo-entry', hint_text: 'Search tasks' });
+        this._search = new St.Entry({ style_class: 'todo-entry', hint_text: _('Search tasks') });
         this._search.clutter_text.connect('text-changed', () => {
             this.ui.query = this._search.get_text();
             this._renderList();
@@ -850,11 +851,11 @@ class TodoListApplet extends Applet.TextIconApplet {
         this._root.add_child(this._listScroll);
 
         this._composer = new St.BoxLayout({ vertical: true, style_class: 'todo-composer' });
-        this._titleEntry = new St.Entry({ style_class: 'todo-entry', hint_text: 'Add a task' });
+        this._titleEntry = new St.Entry({ style_class: 'todo-entry', hint_text: _('Add a task') });
         this._titleEntry.clutter_text.connect('activate', () => this.addTask());
         this._descEntry = new St.Entry({
             style_class: 'todo-entry todo-desc',
-            hint_text: 'Short description  \u00b7  Shift+Enter for a new line',
+            hint_text: _('Short description  \u00b7  Shift+Enter for a new line'),
         });
         this._descEntry.clutter_text.set_single_line_mode(false);
         this._descEntry.clutter_text.set_line_wrap(true);
@@ -875,7 +876,7 @@ class TodoListApplet extends Applet.TextIconApplet {
             this._chipRow.add_child(btn);
             return { p: p, btn: btn };
         });
-        this._addButton = new St.Button({ label: 'Add', style_class: 'todo-add' });
+        this._addButton = new St.Button({ label: _('Add'), style_class: 'todo-add' });
         this._addButton.connect('clicked', () => this.addTask());
         bottom.add_child(this._chipRow);
         bottom.add_child(this._addButton);
@@ -886,12 +887,12 @@ class TodoListApplet extends Applet.TextIconApplet {
         this._footer = new St.BoxLayout({ style_class: 'todo-footer todo-footer-row' });
         this._footerKeys = new St.Label({
             style_class: 'todo-footer-keys',
-            text: 'Tab move  \u00b7  n add  \u00b7  / search  \u00b7  \u2190 \u2192 tabs  \u00b7  t theme  \u00b7  Esc close',
+            text: _('Tab move  \u00b7  n add  \u00b7  / search  \u00b7  \u2190 \u2192 tabs  \u00b7  t theme  \u00b7  Esc close'),
         });
         this._footerKeys.x_expand = true;
         this._footerHotkey = new St.Label({
             style_class: 'todo-footer-hotkey',
-            text: hotkeyLabel(HOTKEY) + ' open / close',
+            text: _('%s open / close').format(hotkeyLabel(HOTKEY)),
         });
         this._footer.add_child(this._footerKeys);
         this._footer.add_child(this._footerHotkey);
@@ -923,7 +924,7 @@ class TodoListApplet extends Applet.TextIconApplet {
         TAB_OPTIONS.forEach(tab => {
             const selected = this.state.activeTab === tab.value;
             const btn = new St.Button({
-                label: tab.label + ' (' + this._tabCount(tab.value) + ')',
+                label: _(tab.label) + ' (' + this._tabCount(tab.value) + ')',
                 style_class: selected ? 'todo-tab todo-tab-selected' : 'todo-tab',
             });
             btn.connect('clicked', () => this.setTab(tab.value));
@@ -956,7 +957,7 @@ class TodoListApplet extends Applet.TextIconApplet {
         rows.forEach(task => this._listBox.add_child(this._buildRow(task)));
         if (tab === 'complete' && this.ui.query === ''
             && listed(this.state.tasks, '', 'complete').length > 0) {
-            const clear = new St.Button({ label: 'Clear', style_class: 'todo-clear' });
+            const clear = new St.Button({ label: _('Clear'), style_class: 'todo-clear' });
             clear.connect('clicked', () => this.clearCompleted());
             this._listBox.add_child(clear);
         }
@@ -1024,7 +1025,7 @@ class TodoListApplet extends Applet.TextIconApplet {
         edit.connect('clicked', () => this.toggleEditing(id));
         actions.add_child(edit);
         const remove = new St.Button({
-            label: daily ? 'Delete' : '\u2715',
+            label: daily ? _('Delete') : '\u2715',
             style_class: 'todo-action todo-action-danger',
         });
         remove.connect('clicked', () => this.removeTask(id));
@@ -1045,7 +1046,7 @@ class TodoListApplet extends Applet.TextIconApplet {
         } else if (expanded) {
             const desc = new St.Label({
                 style_class: 'todo-row-desc',
-                text: task.description || 'No description',
+                text: task.description || _('No description'),
             });
             desc.clutter_text.set_line_wrap(true);
             row.add_child(desc);
@@ -1056,9 +1057,9 @@ class TodoListApplet extends Applet.TextIconApplet {
     _buildEditor(task, daily) {
         const id = String(task.id);
         const box = new St.BoxLayout({ vertical: true, style_class: 'todo-editor' });
-        const title = new St.Entry({ style_class: 'todo-entry', hint_text: 'Title' });
+        const title = new St.Entry({ style_class: 'todo-entry', hint_text: _('Title') });
         title.set_text(task.title);
-        const desc = new St.Entry({ style_class: 'todo-entry todo-desc', hint_text: 'Description' });
+        const desc = new St.Entry({ style_class: 'todo-entry todo-desc', hint_text: _('Description') });
         desc.clutter_text.set_single_line_mode(false);
         desc.clutter_text.set_line_wrap(true);
         desc.set_text(task.description);
@@ -1081,10 +1082,10 @@ class TodoListApplet extends Applet.TextIconApplet {
 
         const commit = () => this.editTask(id, title.get_text(), desc.get_text(), priority);
         const buttons = new St.BoxLayout({ style_class: 'todo-composer-bottom' });
-        const save = new St.Button({ label: 'Save', style_class: 'todo-add' });
+        const save = new St.Button({ label: _('Save'), style_class: 'todo-add' });
         save.connect('clicked', commit);
         title.clutter_text.connect('activate', commit);
-        const cancel = new St.Button({ label: 'Cancel', style_class: 'todo-action' });
+        const cancel = new St.Button({ label: _('Cancel'), style_class: 'todo-action' });
         cancel.connect('clicked', () => this.toggleEditing(id));
         buttons.add_child(save);
         buttons.add_child(cancel);

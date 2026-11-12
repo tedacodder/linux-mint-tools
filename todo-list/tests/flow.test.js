@@ -426,68 +426,6 @@ check('keyboard only: Escape from a row closes the dialog', () => {
     assert.strictEqual(app.menu.isOpen, false);
 });
 
-// ---- keyboard shortcut trigger ----
-
-const TOGGLE_EVENT = { CHANGED: 0, CHANGES_DONE_HINT: 1, DELETED: 2, CREATED: 3, ATTRIBUTE_CHANGED: 4 };
-
-function triggerMonitor(app) {
-    const m = app.world.monitors.find(x => x.path.endsWith('/todo-list/toggle'));
-    assert.ok(m, 'the applet watches the toggle file');
-    return m;
-}
-
-check('the keyboard shortcut trigger opens the window, and a second press closes it', () => {
-    freshHome('shortcut');
-    const app = startApplet();
-    const monitor = triggerMonitor(app);
-    assert.strictEqual(app.menu.isOpen, false);
-    monitor.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
-    assert.strictEqual(app.menu.isOpen, true, 'first press opens');
-    fireTimers(app.world, 1000);
-    monitor.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
-    assert.strictEqual(app.menu.isOpen, false, 'second press closes');
-});
-
-check('one press that sends two events toggles only once', () => {
-    freshHome('shortcut-double');
-    const app = startApplet();
-    const monitor = triggerMonitor(app);
-    monitor.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
-    monitor.emit('changed', null, null, TOGGLE_EVENT.CREATED);
-    assert.strictEqual(app.menu.isOpen, true, 'the second event is ignored');
-});
-
-check('a touch (attribute change) opens the window, as the shortcut command does', () => {
-    freshHome('shortcut-touch');
-    const app = startApplet();
-    triggerMonitor(app).emit('changed', null, null, TOGGLE_EVENT.ATTRIBUTE_CHANGED);
-    assert.strictEqual(app.menu.isOpen, true);
-});
-
-check('a deleted file does nothing, and every event is logged', () => {
-    freshHome('shortcut-other');
-    const app = startApplet();
-    triggerMonitor(app).emit('changed', null, null, TOGGLE_EVENT.DELETED);
-    assert.strictEqual(app.menu.isOpen, false);
-    assert.ok(app.world.logs.some(l => l.includes('shortcut trigger event 2')));
-});
-
-check('removing the applet stops watching the toggle file', () => {
-    freshHome('shortcut-remove');
-    const app = startApplet();
-    const monitor = triggerMonitor(app);
-    app.applet.on_applet_removed_from_panel();
-    assert.strictEqual(monitor.cancelled, true);
-});
-
-check('a broken shortcut watcher does not stop the applet from loading', () => {
-    freshHome('shortcut-broken');
-    const app = startApplet('2026-11-10T10:00:00', { failMonitor: true });
-    assert.strictEqual(app.applet.state.activeTab, 'ongoing', 'the applet loaded');
-    app.applet.on_applet_clicked();
-    assert.strictEqual(app.menu.isOpen, true, 'the window still opens from the panel');
-    assert.ok(app.world.logs.some(l => l.includes('keyboard shortcut is off')), 'the failure is logged');
-});
 
 check('the tasks file is replaced by a move, and no temp file is left behind', () => {
     freshHome('move-save');
@@ -732,34 +670,6 @@ check('Lagoon is saved and remembered, and its badge uses the teal accent', () =
     assert.strictEqual(JSON.parse(fs.readFileSync(settingsFile(), 'utf8')).theme, 'lagoon');
     assert.ok(startApplet().applet.ui.theme === 'lagoon');
     assert.ok(app.applet._badge.style.includes('#4FD1C5'));
-});
-
-check('the trigger file can switch theme and open the window', () => {
-    freshHome('trigger-command');
-    const app = startApplet();
-    const trigger = triggerMonitor(app);
-    fs.writeFileSync(path.join(process.env.HOME, '.local', 'state', 'todo-list', 'toggle'), 'theme paper open');
-    trigger.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
-    assert.ok(dialogClasses(app).has('todo-theme-paper'), 'theme switched');
-    assert.strictEqual(app.menu.isOpen, true, 'window opened');
-    fireTimers(app.world, 1000);
-    fs.writeFileSync(path.join(process.env.HOME, '.local', 'state', 'todo-list', 'toggle'), 'close');
-    trigger.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
-    assert.strictEqual(app.menu.isOpen, false, 'window closed');
-});
-
-check('a timestamp from the shortcut command still toggles, and an unknown theme is ignored', () => {
-    freshHome('trigger-timestamp');
-    const app = startApplet();
-    const trigger = triggerMonitor(app);
-    fs.writeFileSync(path.join(process.env.HOME, '.local', 'state', 'todo-list', 'toggle'), '1731300000123456789\n');
-    fireTimers(app.world, 1000);
-    trigger.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
-    assert.strictEqual(app.menu.isOpen, true, 'timestamp opened the window');
-    fireTimers(app.world, 1000);
-    fs.writeFileSync(path.join(process.env.HOME, '.local', 'state', 'todo-list', 'toggle'), 'theme purple');
-    trigger.emit('changed', null, null, TOGGLE_EVENT.CHANGES_DONE_HINT);
-    assert.ok(dialogClasses(app).has('todo-theme-neon'), 'unknown theme leaves the theme alone');
 });
 
 summary();
